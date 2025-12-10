@@ -1,0 +1,148 @@
+syntax = "proto3";
+
+package nanabush.v1;
+
+import "google/protobuf/timestamp.proto";
+
+// Server-side proto with correct go_package for iskoces server
+option go_package = "github.com/dasmlab/iskoces/pkg/proto/v1;nanabushv1";
+
+// TranslationService provides translation capabilities via lightweight MT backends.
+service TranslationService {
+  // RegisterClient registers a new client with the server.
+  // This should be called immediately after establishing a connection.
+  // Returns a client_id that should be used for subsequent heartbeats.
+  rpc RegisterClient(RegisterClientRequest) returns (RegisterClientResponse);
+  
+  // Heartbeat sends a keepalive and re-authentication signal from the client.
+  // Should be called periodically (recommended: every 30-60 seconds).
+  // If the socket is torn down, the client should re-register.
+  rpc Heartbeat(HeartbeatRequest) returns (HeartbeatResponse);
+  
+  // CheckTitle performs a lightweight pre-flight check with title only.
+  // This validates that Iskoces is ready and can handle the request.
+  rpc CheckTitle(TitleCheckRequest) returns (TitleCheckResponse);
+  
+  // Translate performs full document translation.
+  // This is the main translation endpoint that processes complete documents.
+  rpc Translate(TranslateRequest) returns (TranslateResponse);
+  
+  // TranslateStream supports streaming for large documents.
+  // Client sends chunks, server responds with translated chunks.
+  rpc TranslateStream(stream TranslateChunk) returns (stream TranslateChunk);
+}
+
+// PrimitiveType indicates what type of translation is being requested.
+enum PrimitiveType {
+  PRIMITIVE_UNSPECIFIED = 0;
+  PRIMITIVE_TITLE = 1;        // Title-only translation
+  PRIMITIVE_DOC_TRANSLATE = 2; // Full document translation
+}
+
+// TitleCheckRequest is used for pre-flight validation.
+message TitleCheckRequest {
+  string title = 1;
+  string language_tag = 2;      // Target language (e.g., "fr-CA")
+  string source_language = 3;    // Source language (e.g., "EN")
+}
+
+// TitleCheckResponse indicates if Iskoces is ready to handle the request.
+message TitleCheckResponse {
+  bool ready = 1;
+  string message = 2;
+  int32 estimated_time_seconds = 3;
+}
+
+// TranslateRequest contains the full translation request.
+message TranslateRequest {
+  // Job identification
+  string job_id = 1;
+  string namespace = 2;
+  
+  // Primitive type
+  PrimitiveType primitive = 3;
+  
+  // Source content - oneof ensures only one is set
+  oneof source {
+    string title = 4;           // For PRIMITIVE_TITLE
+    DocumentContent doc = 5;    // For PRIMITIVE_DOC_TRANSLATE
+  }
+  
+  // Template helper (optional) - provides context about document structure
+  DocumentContent template_helper = 6;
+  
+  // Translation parameters
+  string source_language = 7;   // e.g., "EN"
+  string target_language = 8;   // e.g., "fr-CA" (BCP 47)
+  
+  // Metadata
+  string source_wiki_uri = 9;
+  string page_id = 10;
+  string page_slug = 11;
+  google.protobuf.Timestamp requested_at = 12;
+}
+
+// DocumentContent represents a document's content and metadata.
+message DocumentContent {
+  string title = 1;
+  string markdown = 2;
+  string slug = 3;
+  map<string, string> metadata = 4;  // Collection, template, etc.
+}
+
+// TranslateResponse contains the translation result.
+message TranslateResponse {
+  string job_id = 1;
+  bool success = 2;
+  string translated_title = 3;
+  string translated_markdown = 4;
+  string error_message = 5;
+  google.protobuf.Timestamp completed_at = 6;
+  int32 tokens_used = 7;
+  double inference_time_seconds = 8;
+}
+
+// TranslateChunk is used for streaming translation of large documents.
+message TranslateChunk {
+  string job_id = 1;
+  int32 chunk_index = 2;
+  bool is_final = 3;
+  string content = 4;
+  string error_message = 5;
+}
+
+// RegisterClientRequest registers a client with the server.
+message RegisterClientRequest {
+  string client_name = 1;           // Name/identifier of the client (e.g., "glooscap")
+  string client_version = 2;        // Version of the client
+  string namespace = 3;             // Kubernetes namespace (optional)
+  map<string, string> metadata = 4; // Additional client metadata
+  google.protobuf.Timestamp registered_at = 5;
+}
+
+// RegisterClientResponse confirms client registration.
+message RegisterClientResponse {
+  string client_id = 1;              // Unique client ID assigned by server
+  bool success = 2;
+  string message = 3;
+  int32 heartbeat_interval_seconds = 4; // Recommended heartbeat interval
+  google.protobuf.Timestamp expires_at = 5; // When registration expires (if applicable)
+}
+
+// HeartbeatRequest sends a keepalive signal from the client.
+message HeartbeatRequest {
+  string client_id = 1;              // Client ID from RegisterClientResponse
+  string client_name = 2;            // Client name (for validation)
+  google.protobuf.Timestamp sent_at = 3;
+  map<string, string> metadata = 4;  // Optional status/metadata
+}
+
+// HeartbeatResponse confirms heartbeat receipt.
+message HeartbeatResponse {
+  bool success = 1;
+  string message = 2;
+  google.protobuf.Timestamp received_at = 3;
+  int32 heartbeat_interval_seconds = 4; // Recommended next heartbeat interval
+  bool re_register_required = 5;     // If true, client should re-register
+}
+
