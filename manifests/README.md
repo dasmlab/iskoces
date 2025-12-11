@@ -37,22 +37,24 @@ The `configmap.yaml` defines environment variables for Iskoces:
 
 Models are stored in a PersistentVolumeClaim (`iskoces-models`) mounted at `/models`. This ensures models persist across pod restarts.
 
-For local development (Colima/minikube), the PVC uses `storageClassName: local-path`.
+For local development (k3d/minikube), the PVC uses `storageClassName: local-path`.
 
 ## Image Configuration
 
 For local development, you may need to:
 
-1. **Build image locally** using Podman:
+1. **Build image locally** using Docker:
    ```bash
    cd /path/to/iskoces
-   podman build -t ghcr.io/dasmlab/iskoces-server:latest .
+   docker build -t ghcr.io/dasmlab/iskoces-server:latest .
    ```
 
-2. **Load image into Colima**:
+2. **Load image into k3d**:
    ```bash
-   # Colima uses Docker-compatible API, so images are automatically available
-   # Images built with Podman/Docker are accessible to Colima
+   # k3d uses Docker directly, so images are automatically available
+   # Images built with Docker are accessible to k3d
+   # Or import explicitly if needed:
+   # k3d image import ghcr.io/dasmlab/iskoces-server:latest -c glooscap
    ```
 
 3. **Update imagePullPolicy** in `deployment.yaml`:

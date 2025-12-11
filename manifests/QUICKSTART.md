@@ -1,10 +1,10 @@
 # Iskoces Kubernetes Quick Start
 
-This guide will help you deploy Iskoces to a Kubernetes cluster (Colima, minikube, or any other).
+This guide will help you deploy Iskoces to a Kubernetes cluster (k3d, minikube, or any other).
 
 ## Prerequisites
 
-- Kubernetes cluster running (Colima, minikube, or other)
+- Kubernetes cluster running (k3d, minikube, or other)
 - `kubectl` configured to access the cluster
 - Iskoces Docker image built and available (or use pre-built from registry)
 
