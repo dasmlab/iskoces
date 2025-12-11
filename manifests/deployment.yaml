@@ -65,7 +65,7 @@ spec:
             command:
             - /bin/sh
             - -c
-            - "curl -f http://localhost:5000/health && grpc_health_probe -addr=localhost:50051 || exit 1"
+            - "curl -f http://localhost:5000/health || exit 1"
           initialDelaySeconds: 90  # Give time for models to load
           periodSeconds: 10
           timeoutSeconds: 5
