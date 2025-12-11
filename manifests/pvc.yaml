@@ -11,7 +11,7 @@ spec:
   resources:
     requests:
       storage: 10Gi
-  # For local development (Colima/minikube), use local storage
+  # For local development (k3d/minikube), use local storage
   # For production, use a proper storage class
-  storageClassName: local-path  # Colima/minikube compatible
+  storageClassName: local-path  # k3d/minikube compatible
 
