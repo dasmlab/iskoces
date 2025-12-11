@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: iskoces-models
+  namespace: iskoces
+  labels:
+    app.kubernetes.io/name: iskoces
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+  # For local development (Colima/minikube), use local storage
+  # For production, use a proper storage class
+  storageClassName: local-path  # Colima/minikube compatible
+
