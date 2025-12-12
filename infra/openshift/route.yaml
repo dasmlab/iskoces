@@ -1,0 +1,28 @@
+---
+# Route for Iskoces gRPC service
+# Note: OpenShift Routes are primarily for HTTP/HTTPS traffic
+# For gRPC, you may need to use a ServiceMesh (Istio) or direct service access
+# This route exposes the HTTP port (5000) for health checks and debugging
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: iskoces-http
+  namespace: iskoces
+  labels:
+    app.kubernetes.io/name: iskoces
+    app.kubernetes.io/component: server
+spec:
+  host: iskoces.apps.ocp-ai-sno-2.rh.dasmlab.org  # Update with your cluster domain
+  to:
+    kind: Service
+    name: iskoces-service
+  port:
+    targetPort: mt-http  # HTTP port for health checks
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
+---
+# Note: For gRPC access, use the service directly:
+# Service address: iskoces-service.iskoces.svc:50051
+# Or create a ServiceMesh/Istio VirtualService for gRPC routing
+
