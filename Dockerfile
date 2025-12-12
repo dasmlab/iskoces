@@ -64,17 +64,28 @@ FROM debian:12-slim
 
 WORKDIR /app
 
-# Install runtime dependencies including Python and LibreTranslate
+# Install runtime dependencies including Python and build tools
+# Build tools (gcc, g++, make) are needed for compiling Python C extensions in LibreTranslate
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     curl \
     python3 \
     python3-pip \
+    build-essential \
+    gcc \
+    g++ \
+    make \
     && rm -rf /var/lib/apt/lists/*
 
 # Install LibreTranslate
 # Note: --break-system-packages is needed for Debian 12 (PEP 668)
+# Build tools are required here for compiling Python C extensions
 RUN pip3 install --no-cache-dir --break-system-packages libretranslate
+
+# Optional: Remove build tools to reduce image size (keep if needed for runtime)
+# Uncomment the following lines if you want to remove build tools after installation:
+# RUN apt-get purge -y --auto-remove build-essential gcc g++ make && \
+#     rm -rf /var/lib/apt/lists/*
 
 # Copy Go binary from builder
 COPY --from=builder /tmp/iskoces-server /usr/local/bin/iskoces-server
