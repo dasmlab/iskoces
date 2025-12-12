@@ -16,6 +16,23 @@ Iskoces is a lightweight machine translation service that can be deployed alongs
 - Kubernetes cluster running (from Glooscap setup)
 - `DASMLAB_GHCR_PAT` environment variable set (for pushing images)
 
+## Setup Build Environment
+
+Before building Iskoces, ensure build dependencies are installed:
+
+```bash
+cd infra/macos-foss
+./scripts/setup-macos-env.sh
+```
+
+This will install:
+- Xcode Command Line Tools (provides `cc`, `gcc`, `clang`)
+- Go (if not already installed)
+- protobuf compiler (`protoc`)
+- `make`
+
+**Note:** If installing via Glooscap's `install_glooscap.sh --plugins iskoces`, the setup script is automatically called before building.
+
 ## Quick Start
 
 ### Option 1: Install via Glooscap (Recommended)
@@ -70,6 +87,7 @@ infra/macos-foss/
 │   ├── deployment.yaml      # Deployment
 │   └── service.yaml         # Service (LoadBalancer)
 └── scripts/                 # Scripts
+    ├── setup-macos-env.sh   # Setup build environment (cc, go, protoc, etc.)
     ├── build-and-load-images.sh  # Build and push image
     ├── deploy-iskoces.sh    # Deploy Iskoces
     ├── undeploy-iskoces.sh  # Remove Iskoces
