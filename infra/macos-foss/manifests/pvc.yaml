@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: iskoces-models
+  namespace: iskoces
+  labels:
+    app.kubernetes.io/name: iskoces
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+  # For local development (k3d), use local-path storage class
+  storageClassName: local-path  # k3d compatible
+

@@ -1,0 +1,84 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: iskoces-server
+  namespace: iskoces
+  labels:
+    app.kubernetes.io/name: iskoces
+    app.kubernetes.io/component: server
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: iskoces
+      app.kubernetes.io/component: server
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: iskoces
+        app.kubernetes.io/component: server
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      imagePullSecrets:
+      - name: dasmlab-ghcr-pull
+      containers:
+      - name: iskoces-server
+        # Architecture-specific local development images
+        # Built and pushed by build-and-load-images.sh with tags like:
+        # - ghcr.io/dasmlab/iskoces-server:local-arm64 (for macOS ARM/Apple Silicon)
+        # - ghcr.io/dasmlab/iskoces-server:local-amd64 (for macOS Intel/Linux)
+        # To use production image, change to: ghcr.io/dasmlab/iskoces-server:latest
+        image: ghcr.io/dasmlab/iskoces-server:local-arm64
+        imagePullPolicy: IfNotPresent
+        command: ["/entrypoint.sh"]
+        ports:
+        - name: grpc
+          containerPort: 50051
+          protocol: TCP
+        - name: mt-http
+          containerPort: 5000
+          protocol: TCP
+        envFrom:
+        - configMapRef:
+            name: iskoces-config
+        volumeMounts:
+        - name: models-storage
+          mountPath: /models
+        resources:
+          requests:
+            cpu: 500m
+            memory: 1Gi
+          limits:
+            cpu: 2000m
+            memory: 4Gi
+        livenessProbe:
+          exec:
+            command:
+            - /bin/sh
+            - -c
+            - "curl -f http://localhost:5000/health || exit 1"
+          initialDelaySeconds: 60  # Give time for models to load
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 3
+        readinessProbe:
+          exec:
+            command:
+            - /bin/sh
+            - -c
+            - "curl -f http://localhost:5000/health || exit 1"
+          initialDelaySeconds: 90  # Give time for models to load
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+      volumes:
+      - name: models-storage
+        persistentVolumeClaim:
+          claimName: iskoces-models
+      terminationGracePeriodSeconds: 60  # Give time for graceful shutdown
+

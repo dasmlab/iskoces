@@ -1,0 +1,24 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: iskoces-config
+  namespace: iskoces
+  labels:
+    app.kubernetes.io/name: iskoces
+data:
+  # Translation engine: libretranslate or argos
+  ISKOCES_MT_ENGINE: "libretranslate"
+  # Base URL for MT engine API (localhost within pod)
+  ISKOCES_MT_URL: "http://localhost:5000"
+  # Port for MT engine
+  ISKOCES_MT_PORT: "5000"
+  # Port for gRPC server
+  ISKOCES_GRPC_PORT: "50051"
+  # Log level: debug, info, warn, error
+  ISKOCES_LOG_LEVEL: "info"
+  # Comma-separated list of language codes to load (e.g., "en,fr,es")
+  # Set to "all" to load all available models
+  ISKOCES_MT_LANGUAGES: "en,fr,es"
+  # Model storage directory (mounted as volume)
+  ISKOCES_MT_MODEL_DIR: "/models"
+
