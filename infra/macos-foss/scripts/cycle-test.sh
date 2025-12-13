@@ -75,6 +75,16 @@ if [ -z "${DASMLAB_GHCR_PAT:-}" ]; then
     log_info "The token should be a GitHub PAT with 'write:packages' permission"
 fi
 
+# Create registry secret before deploying (if token is set)
+if [ -n "${DASMLAB_GHCR_PAT:-}" ]; then
+    log_info "Creating registry secret..."
+    if bash "${SCRIPT_DIR}/create-registry-secret.sh"; then
+        log_success "Registry secret created"
+    else
+        log_warn "Failed to create registry secret (continuing anyway)"
+    fi
+fi
+
 # Check if cluster is accessible
 if ! kubectl cluster-info &> /dev/null 2>&1; then
     log_error "Cannot connect to Kubernetes cluster"

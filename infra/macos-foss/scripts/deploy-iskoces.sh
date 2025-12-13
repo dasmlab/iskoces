@@ -51,6 +51,20 @@ log_info "Deploying Iskoces to Kubernetes cluster..."
 log_info "Creating namespace..."
 kubectl apply -f "${MANIFESTS_DIR}/namespace.yaml"
 
+# Create registry secret if DASMLAB_GHCR_PAT is set
+if [ -n "${DASMLAB_GHCR_PAT:-}" ]; then
+    log_info "Creating registry secret..."
+    if bash "${SCRIPT_DIR}/create-registry-secret.sh"; then
+        log_success "Registry secret created"
+    else
+        log_warn "Failed to create registry secret (images may not pull from registry)"
+        log_info "Continuing anyway..."
+    fi
+else
+    log_warn "DASMLAB_GHCR_PAT not set - skipping registry secret creation"
+    log_info "If you need to pull images from ghcr.io, set: export DASMLAB_GHCR_PAT=your_token"
+fi
+
 # Apply ConfigMap
 log_info "Applying configuration..."
 kubectl apply -f "${MANIFESTS_DIR}/configmap.yaml"
