@@ -122,7 +122,16 @@ func (s *TranslationService) RegisterClient(ctx context.Context, req *nanabushv1
 		"client_id":                clientID,
 		"heartbeat_interval_sec":   s.heartbeatInterval,
 		"expires_at":               expiresAt.Format(time.RFC3339),
+		"response_success":         response.Success,
+		"response_message":         response.Message,
 	}).Info("[gRPC] RegisterClient response prepared, returning to client")
+
+	// Log the actual return to help debug if response is sent
+	defer func() {
+		s.Logger.WithFields(logrus.Fields{
+			"client_id": clientID,
+		}).Info("[gRPC] RegisterClient handler returning (response should be sent)")
+	}()
 
 	return response, nil
 }
