@@ -70,11 +70,12 @@ func (s *TranslationService) RegisterClient(ctx context.Context, req *nanabushv1
 		"client_name":    req.ClientName,
 		"client_version": req.ClientVersion,
 		"namespace":     req.Namespace,
-	}).Info("RegisterClient request received")
+		"metadata":      req.Metadata,
+	}).Info("[gRPC] RegisterClient request received")
 
 	// Validate request
 	if req.ClientName == "" {
-		s.Logger.Error("RegisterClient: client_name is required")
+		s.Logger.Error("[gRPC] RegisterClient: client_name is required")
 		return nil, status.Error(codes.InvalidArgument, "client_name is required")
 	}
 
@@ -104,18 +105,26 @@ func (s *TranslationService) RegisterClient(ctx context.Context, req *nanabushv1
 		"client_id":     clientID,
 		"client_name":   req.ClientName,
 		"total_clients": len(s.clients),
-	}).Info("Client registered successfully")
+	}).Info("[gRPC] Client registered successfully, sending response")
 
 	// Calculate expiration (24 hours from now)
 	expiresAt := now.Add(24 * time.Hour)
 
-	return &nanabushv1.RegisterClientResponse{
+	response := &nanabushv1.RegisterClientResponse{
 		ClientId:               clientID,
 		Success:                true,
 		Message:                fmt.Sprintf("Client %q registered successfully", req.ClientName),
 		HeartbeatIntervalSeconds: int32(s.heartbeatInterval),
 		ExpiresAt:              timestamppb.New(expiresAt),
-	}, nil
+	}
+
+	s.Logger.WithFields(logrus.Fields{
+		"client_id":                clientID,
+		"heartbeat_interval_sec":   s.heartbeatInterval,
+		"expires_at":               expiresAt.Format(time.RFC3339),
+	}).Info("[gRPC] RegisterClient response prepared, returning to client")
+
+	return response, nil
 }
 
 // Heartbeat sends a keepalive and re-authentication signal from the client.
@@ -124,7 +133,7 @@ func (s *TranslationService) Heartbeat(ctx context.Context, req *nanabushv1.Hear
 	s.Logger.WithFields(logrus.Fields{
 		"client_id":   req.ClientId,
 		"client_name": req.ClientName,
-	}).Debug("Heartbeat request received")
+	}).Debug("[gRPC] Heartbeat request received")
 
 	// Validate request
 	if req.ClientId == "" {

@@ -115,6 +115,30 @@ func main() {
 		opts = append(opts, grpc.Creds(insecure.NewCredentials()))
 	}
 
+	// Configure server-side keepalive enforcement to match client settings
+	// Client sends pings every 30s, so we allow up to 60s between pings
+	// This prevents "too many pings" errors
+	opts = append(opts, grpc.KeepaliveEnforcementPolicy(keepalive.EnforcementPolicy{
+		MinTime:             15 * time.Second, // Minimum time between pings (client sends every 30s)
+		PermitWithoutStream: true,              // Allow pings even when no active streams
+	}))
+	opts = append(opts, grpc.KeepaliveParams(keepalive.ServerParameters{
+		MaxConnectionIdle:     5 * time.Minute, // Close idle connections after 5 minutes
+		MaxConnectionAge:      30 * time.Minute, // Close connections after 30 minutes
+		MaxConnectionAgeGrace: 5 * time.Second, // Grace period for closing
+		Time:                  30 * time.Second, // Send keepalive pings every 30s if there's activity
+		Timeout:               10 * time.Second, // Wait 10s for ping ack before considering connection dead
+	}))
+
+	logger.WithFields(logrus.Fields{
+		"min_time":              "15s",
+		"permit_without_stream": true,
+		"max_connection_idle":   "5m",
+		"max_connection_age":   "30m",
+		"time":                  "30s",
+		"timeout":               "10s",
+	}).Debug("Configured gRPC server keepalive settings")
+
 	// Create gRPC server
 	s := grpc.NewServer(opts...)
 
