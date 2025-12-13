@@ -66,6 +66,7 @@ WORKDIR /app
 
 # Install runtime dependencies including Python and build tools
 # Build tools (gcc, g++, make) are needed for compiling Python C extensions in LibreTranslate
+# Additional dependencies for PyMuPDF (mupdf) compilation on ARM64
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     curl \
@@ -75,11 +76,26 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     g++ \
     make \
+    cmake \
+    pkg-config \
+    libfreetype6-dev \
+    libjpeg62-turbo-dev \
+    libopenjp2-7-dev \
+    libtiff5-dev \
+    libxcb1-dev \
     && rm -rf /var/lib/apt/lists/*
+
+# Install PyMuPDF first with a version that has ARM64 wheels or better build support
+# This prevents LibreTranslate from pulling a version that fails to build on ARM64
+# Version 1.25.2+ has better ARM64 support, but we'll let pip find the best available
+RUN pip3 install --no-cache-dir --break-system-packages \
+    "PyMuPDF>=1.25.2" || \
+    pip3 install --no-cache-dir --break-system-packages PyMuPDF
 
 # Install LibreTranslate
 # Note: --break-system-packages is needed for Debian 12 (PEP 668)
 # Build tools are required here for compiling Python C extensions
+# PyMuPDF is already installed above to avoid build issues
 RUN pip3 install --no-cache-dir --break-system-packages libretranslate
 
 # Optional: Remove build tools to reduce image size (keep if needed for runtime)
