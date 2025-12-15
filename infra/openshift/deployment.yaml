@@ -31,6 +31,12 @@ spec:
         image: ghcr.io/dasmlab/iskoces-server:latest
         imagePullPolicy: Always
         command: ["/entrypoint.sh"]
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          readOnlyRootFilesystem: false  # Need write access for models and temp files
         ports:
         - name: grpc
           containerPort: 50051

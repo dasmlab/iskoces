@@ -39,8 +39,13 @@ oc create secret docker-registry dasmlab-ghcr-pull \
 
 ### 3. Deploy Iskoces
 
+**Important**: Apply manifests in order to ensure namespace is created first:
+
 ```bash
-# Apply all manifests
+# Apply namespace first (required for other resources)
+oc apply -f namespace.yaml
+
+# Then apply all other manifests
 oc apply -f configmap.yaml
 oc apply -f pvc.yaml
 oc apply -f deployment.yaml
@@ -48,11 +53,13 @@ oc apply -f service.yaml
 oc apply -f route.yaml
 ```
 
-Or apply all at once:
+Or apply all at once (namespace will be created first automatically):
 
 ```bash
 oc apply -f .
 ```
+
+**Note**: If you see "namespace not found" errors, apply `namespace.yaml` first, then apply the rest.
 
 ### 4. Verify Deployment
 

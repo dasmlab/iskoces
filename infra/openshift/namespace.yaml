@@ -6,4 +6,9 @@ metadata:
     name: iskoces
     app.kubernetes.io/name: iskoces
     app.kubernetes.io/managed-by: manual
+    # PodSecurity: Use 'restricted' for maximum security
+    # This enforces the strictest security policies
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted
 
