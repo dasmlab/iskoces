@@ -27,7 +27,13 @@ oc apply -f namespace.yaml
 
 ### 2. Create Image Pull Secret
 
-If not already created, create the image pull secret:
+If not already created, create the image pull secret using the helper script:
+
+```bash
+DASMLAB_GHCR_PAT=your_token ./create-registry-secret.sh iskoces
+```
+
+Or manually:
 
 ```bash
 oc create secret docker-registry dasmlab-ghcr-pull \
@@ -36,6 +42,8 @@ oc create secret docker-registry dasmlab-ghcr-pull \
   --docker-password=<your_github_token> \
   --namespace=iskoces
 ```
+
+**Note**: The helper script (`create-registry-secret.sh`) ensures the namespace exists and makes the operation idempotent.
 
 ### 3. Deploy Iskoces
 
