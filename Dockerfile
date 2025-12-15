@@ -98,10 +98,21 @@ RUN pip3 install --no-cache-dir --break-system-packages \
 # PyMuPDF is already installed above to avoid build issues
 RUN pip3 install --no-cache-dir --break-system-packages libretranslate
 
-# Optional: Remove build tools to reduce image size (keep if needed for runtime)
-# Uncomment the following lines if you want to remove build tools after installation:
-# RUN apt-get purge -y --auto-remove build-essential gcc g++ make && \
-#     rm -rf /var/lib/apt/lists/*
+# Remove build tools to reduce image size (they're only needed during pip install)
+# This significantly reduces the final image size (removes ~1-2GB)
+RUN apt-get purge -y --auto-remove \
+    build-essential \
+    gcc \
+    g++ \
+    make \
+    cmake \
+    pkg-config \
+    libfreetype6-dev \
+    libjpeg62-turbo-dev \
+    libopenjp2-7-dev \
+    libtiff5-dev \
+    libxcb1-dev \
+    && rm -rf /var/lib/apt/lists/*
 
 # Copy Go binary from builder
 COPY --from=builder /tmp/iskoces-server /usr/local/bin/iskoces-server
