@@ -11,7 +11,7 @@ spec:
   resources:
     requests:
       storage: 10Gi
-  # OpenShift will use the default storage class if not specified
-  # For production, specify a storage class if needed:
-  # storageClassName: gp3-csi
+  # Use lvms-vg1 storage class (topolvm.io provisioner)
+  # This is the available storage class in this OpenShift cluster
+  storageClassName: lvms-vg1
 

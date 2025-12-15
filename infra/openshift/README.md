@@ -90,11 +90,16 @@ spec:
 
 ### Update Storage Class
 
-If you need a specific storage class, edit `pvc.yaml`:
+The PVC is configured to use `lvms-vg1` storage class (topolvm.io provisioner) by default. If you need a different storage class, edit `pvc.yaml`:
 
 ```yaml
 spec:
-  storageClassName: gp3-csi  # or your storage class
+  storageClassName: lvms-vg1  # or your storage class
+```
+
+To check available storage classes in your cluster:
+```bash
+oc get sc
 ```
 
 ### Update Image Tag
