@@ -96,7 +96,14 @@ RUN pip3 install --no-cache-dir --break-system-packages \
 # Note: --break-system-packages is needed for Debian 12 (PEP 668)
 # Build tools are required here for compiling Python C extensions
 # PyMuPDF is already installed above to avoid build issues
-RUN pip3 install --no-cache-dir --break-system-packages libretranslate
+# LibreTranslate is large (~3-4GB) because it includes PyTorch and ML models
+# Consider using argostranslate for a lighter alternative if size is critical
+RUN pip3 install --no-cache-dir --break-system-packages libretranslate && \
+    # Clean up pip cache to reduce size
+    rm -rf /root/.cache/pip && \
+    # Remove unnecessary Python packages if possible
+    find /usr/local/lib/python3.12 -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true && \
+    find /usr/local/lib/python3.12 -type f -name "*.pyc" -delete 2>/dev/null || true
 
 # Remove build tools to reduce image size (they're only needed during pip install)
 # This significantly reduces the final image size (removes ~1-2GB)

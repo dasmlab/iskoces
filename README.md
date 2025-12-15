@@ -8,6 +8,7 @@ Iskoces is a lightweight, self-hosted machine translation service designed to be
 - **Multiple Backends**: Supports LibreTranslate and Argos Translate
 - **Self-Hosted**: No external dependencies, runs entirely within the container
 - **Lightweight**: No GPU required, CPU-only inference
+  - **Note**: LibreTranslate includes PyTorch, so the Docker image is ~5-6GB. This is expected for ML-based translation engines.
 - **Network Isolation**: All communication via localhost, no egress needed
 
 ## Architecture
