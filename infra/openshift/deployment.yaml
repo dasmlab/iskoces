@@ -20,8 +20,10 @@ spec:
     spec:
       securityContext:
         runAsNonRoot: true
-        runAsUser: 1001
-        fsGroup: 1001
+        # OpenShift restricted-v2 SCC requires UID in range [1000950000, 1000959999]
+        # Using 1000950000 as a safe default within the allowed range
+        runAsUser: 1000950000
+        fsGroup: 1000950000
         seccompProfile:
           type: RuntimeDefault
       imagePullSecrets:
