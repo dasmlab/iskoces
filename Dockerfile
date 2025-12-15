@@ -110,13 +110,15 @@ COPY --from=builder /tmp/iskoces-server /usr/local/bin/iskoces-server
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
-# Create non-root user (UID will be assigned by OpenShift SCC)
-RUN useradd -r -g 0 -u 1001 iskoces || true && \
-    chown -R 1001:0 /app && \
-    chmod -R g+w /app
+# Make directories writable by group (OpenShift will assign UID, but group will be 0/root)
+# This ensures the container works regardless of what UID OpenShift assigns
+RUN chown -R root:0 /app /tmp && \
+    chmod -R g+w /app /tmp && \
+    chmod -R g+w /usr/local/bin/iskoces-server || true
 
-# Don't set USER here - let OpenShift SCC handle it
-# USER 1001
+# Don't create a specific user - let OpenShift SCC assign UID automatically
+# OpenShift will run as a non-root UID from the namespace's allocated range
+# Files are group-writable (g+w) so any UID in group 0 can write
 
 # Expose ports
 # gRPC server
