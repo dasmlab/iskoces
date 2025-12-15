@@ -1,0 +1,30 @@
+# Technical Documentation Translation Test
+
+This document contains technical terminology and code examples that should be translated accurately.
+
+## Key Concepts
+
+- **Machine Translation**: The automatic translation of text from one language to another using computational methods.
+- **Neural Networks**: Artificial intelligence systems inspired by biological neural networks.
+- **API Endpoint**: A specific URL where an API can be accessed.
+
+## Code Example
+
+```python
+def translate_text(text, source_lang, target_lang):
+    """Translate text using the translation service."""
+    response = client.translate(
+        text=text,
+        source=source_lang,
+        target=target_lang
+    )
+    return response.translated_text
+```
+
+## Best Practices
+
+1. Always validate input before translation
+2. Handle errors gracefully
+3. Cache translations when possible
+4. Monitor translation quality
+

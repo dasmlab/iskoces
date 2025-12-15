@@ -185,12 +185,26 @@ The container will:
 
 ## Testing
 
-### Quick Test with testme.sh
+### Comprehensive Test Suite
 
-The easiest way to test Iskoces is using the `testme.sh` script with the included Star Wars opening crawl text:
+Run the full test suite to verify all functionality:
 
 ```bash
-# Test English to French (default)
+# Run all tests (multiple scenarios and language pairs)
+./run-tests.sh
+```
+
+This will test:
+- Multiple text types (narrative, technical, business, literary)
+- Multiple language pairs (EN->FR, EN->ES, FR->EN, ES->EN)
+- Client registration and translation workflows
+
+### Quick Test with testme.sh
+
+Test a single translation quickly:
+
+```bash
+# Test English to French (default - uses Star Wars text)
 ./testme.sh
 
 # Test English to Spanish
@@ -200,15 +214,18 @@ The easiest way to test Iskoces is using the `testme.sh` script with the include
 ./testme.sh fr en
 
 # Use a custom text file
-./testme.sh en fr path/to/your/text.txt
+./testme.sh en fr testdata/technical_document.txt
 ```
 
-The script will:
-1. Check if the server is running
-2. Build the test client if needed
-3. Register with the server
-4. Translate the text file
-5. Display both original and translated text
+### Available Test Data
+
+The `testdata/` directory contains several test files:
+
+- **`starwars_opening.txt`** - Narrative text (Star Wars opening crawl)
+- **`technical_document.txt`** - Technical documentation with code examples
+- **`business_email.txt`** - Business communication
+- **`short_phrases.txt`** - Common phrases for quick testing
+- **`literary_excerpt.txt`** - Literary prose
 
 ### Using the Test Client Directly
 
@@ -218,7 +235,7 @@ You can also use the test client directly:
 # Build the test client
 make build-test
 
-# Run translation
+# Run translation from file
 bin/test-client \
     -addr localhost:50051 \
     -source en \
@@ -231,7 +248,39 @@ bin/test-client \
     -source en \
     -target fr \
     -text "Hello, world!"
+
+# Test against OpenShift deployment
+ISKOCES_SERVER_ADDR=iskoces-service.iskoces.svc:50051 \
+    bin/test-client \
+    -addr iskoces-service.iskoces.svc:50051 \
+    -source en \
+    -target fr \
+    -file testdata/starwars_opening.txt
 ```
+
+### Testing Against OpenShift Deployment
+
+To test against a deployed Iskoces instance:
+
+```bash
+# Port-forward the service (if testing from local machine)
+oc port-forward svc/iskoces-service 50051:50051 -n iskoces
+
+# Then run tests (they'll use localhost:50051 by default)
+./run-tests.sh
+
+# Or specify the service address directly
+ISKOCES_SERVER_ADDR=iskoces-service.iskoces.svc:50051 ./run-tests.sh
+```
+
+### What the Tests Verify
+
+The test suite verifies:
+1. **Client Registration** - Client can register with the server
+2. **Translation** - Text can be translated between languages
+3. **Multiple Content Types** - Different text types translate correctly
+4. **Bidirectional Translation** - Works in both directions (EN->FR and FR->EN)
+5. **Error Handling** - Proper error messages for failures
 
 ### Using grpcurl
 
