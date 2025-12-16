@@ -8,8 +8,8 @@ metadata:
 data:
   # Translation engine: libretranslate or argos
   ISKOCES_MT_ENGINE: "libretranslate"
-  # Base URL for MT engine API (localhost within pod)
-  ISKOCES_MT_URL: "http://localhost:5000"
+  # Base URL for MT engine API (use service name for reliability)
+  ISKOCES_MT_URL: "http://iskoces-service.iskoces.svc:5000"
   # Port for MT engine
   ISKOCES_MT_PORT: "5000"
   # Port for gRPC server
