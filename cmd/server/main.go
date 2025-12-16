@@ -160,13 +160,14 @@ func main() {
 	defer cleanupCancel()
 
 	go func() {
-		ticker := time.NewTicker(2 * time.Minute) // Run cleanup every 2 minutes (more frequent)
+		// Run cleanup every 30 seconds (more frequent to catch disconnected clients quickly)
+		ticker := time.NewTicker(30 * time.Second)
 		defer ticker.Stop()
 
-		// Remove clients that haven't sent a heartbeat in 3x the heartbeat interval
-		// Since heartbeat interval is 30s, this is ~90 seconds (1.5 minutes)
-		// This is more aggressive to catch clients that stopped sending heartbeats
-		maxIdleTime := 3 * 30 * time.Second // 90 seconds (3x heartbeat interval)
+		// Remove clients that haven't sent a heartbeat in 2x the heartbeat interval
+		// Since heartbeat interval is typically 30s, this is 60 seconds
+		// This is aggressive to catch clients that stopped sending heartbeats quickly
+		maxIdleTime := 2 * 30 * time.Second // 60 seconds (2x heartbeat interval)
 
 		for {
 			select {
@@ -178,8 +179,8 @@ func main() {
 		}
 	}()
 	logger.WithFields(logrus.Fields{
-		"cleanup_interval": "2 minutes",
-		"max_idle_time":    "90 seconds (3x heartbeat interval)",
+		"cleanup_interval": "30 seconds",
+		"max_idle_time":    "60 seconds (2x heartbeat interval)",
 	}).Info("Started client cleanup goroutine")
 
 	// Start periodic metrics logging

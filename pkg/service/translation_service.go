@@ -84,8 +84,13 @@ func (s *TranslationService) RegisterClient(ctx context.Context, req *nanabushv1
 
 	// Check for existing clients with the same name and remove them
 	// This handles the case where a client reconnects (e.g., after pod restart)
+	// Also clean up any clients that haven't sent a heartbeat in a while (stale clients)
 	removedOldClients := 0
+	now := time.Now()
+	staleThreshold := 2 * 30 * time.Second // 60 seconds - same as cleanup threshold
+	
 	for existingID, existingClient := range s.clients {
+		// Remove clients with the same name (reconnection case)
 		if existingClient.ClientName == req.ClientName {
 			s.Logger.WithFields(logrus.Fields{
 				"old_client_id":   existingID,
@@ -95,6 +100,19 @@ func (s *TranslationService) RegisterClient(ctx context.Context, req *nanabushv1
 			}).Info("Removing old client with same name (new registration)")
 			delete(s.clients, existingID)
 			removedOldClients++
+		} else {
+			// Also remove any stale clients (haven't sent heartbeat recently)
+			timeSinceLastHeartbeat := now.Sub(existingClient.LastHeartbeat)
+			if timeSinceLastHeartbeat > staleThreshold {
+				s.Logger.WithFields(logrus.Fields{
+					"stale_client_id":     existingID,
+					"client_name":         existingClient.ClientName,
+					"last_heartbeat":      existingClient.LastHeartbeat,
+					"time_since_heartbeat": timeSinceLastHeartbeat,
+				}).Info("Removing stale client during registration (no recent heartbeat)")
+				delete(s.clients, existingID)
+				removedOldClients++
+			}
 		}
 	}
 
