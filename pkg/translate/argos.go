@@ -16,7 +16,8 @@ const (
 	// DefaultArgosURL is the default base URL for Argos Translate API.
 	DefaultArgosURL = "http://127.0.0.1:5000"
 	// DefaultArgosTimeout is the default timeout for HTTP requests.
-	DefaultArgosTimeout = 30 * time.Second
+	// Increased to 5 minutes to handle large documents that may take longer to translate.
+	DefaultArgosTimeout = 5 * time.Minute
 )
 
 // ArgosClient implements the Translator interface using Argos Translate.

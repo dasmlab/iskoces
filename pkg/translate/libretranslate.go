@@ -16,7 +16,8 @@ const (
 	// DefaultLibreTranslateURL is the default base URL for LibreTranslate API.
 	DefaultLibreTranslateURL = "http://localhost:5000"
 	// DefaultLibreTranslateTimeout is the default timeout for HTTP requests.
-	DefaultLibreTranslateTimeout = 30 * time.Second
+	// Increased to 5 minutes to handle large documents that may take longer to translate.
+	DefaultLibreTranslateTimeout = 5 * time.Minute
 )
 
 // LibreTranslateClient implements the Translator interface using LibreTranslate.
