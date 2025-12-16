@@ -120,8 +120,7 @@ func (s *TranslationService) RegisterClient(ctx context.Context, req *nanabushv1
 	s.clientIDCounter++
 	clientID := fmt.Sprintf("iskoces-client-%d-%d", time.Now().Unix(), s.clientIDCounter)
 
-	now := time.Now()
-	// Create client info
+	// Create client info (now was already declared above)
 	clientInfo := &ClientInfo{
 		ClientID:      clientID,
 		ClientName:    req.ClientName,
