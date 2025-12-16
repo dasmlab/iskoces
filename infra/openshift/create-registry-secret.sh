@@ -44,3 +44,4 @@ oc create secret docker-registry dasmlab-ghcr-pull \
 
 echo "Secret 'dasmlab-ghcr-pull' ensured in namespace ${NAMESPACE}"
 
+

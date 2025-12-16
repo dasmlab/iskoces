@@ -10,7 +10,7 @@ import (
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	"github.com/dasmlab/iskoces/pkg/proto/v1"
+	nanabushv1 "github.com/dasmlab/iskoces/pkg/proto/v1"
 	"github.com/dasmlab/iskoces/pkg/translate"
 	"github.com/sirupsen/logrus"
 )
@@ -42,9 +42,9 @@ type TranslationService struct {
 	Logger *logrus.Logger
 
 	// Client tracking for registration and heartbeat management.
-	clients         map[string]*ClientInfo
-	clientsMutex    sync.RWMutex
-	clientIDCounter int64
+	clients           map[string]*ClientInfo
+	clientsMutex      sync.RWMutex
+	clientIDCounter   int64
 	heartbeatInterval int32 // seconds
 }
 
@@ -55,10 +55,10 @@ func NewTranslationService(translator translate.Translator, logger *logrus.Logge
 	}
 
 	return &TranslationService{
-		Translator:     translator,
-		LanguageMapper: translate.NewLanguageMapper(),
-		Logger:         logger,
-		clients:        make(map[string]*ClientInfo),
+		Translator:        translator,
+		LanguageMapper:    translate.NewLanguageMapper(),
+		Logger:            logger,
+		clients:           make(map[string]*ClientInfo),
 		heartbeatInterval: 30, // Default: 30 seconds
 	}
 }
@@ -69,8 +69,8 @@ func (s *TranslationService) RegisterClient(ctx context.Context, req *nanabushv1
 	s.Logger.WithFields(logrus.Fields{
 		"client_name":    req.ClientName,
 		"client_version": req.ClientVersion,
-		"namespace":     req.Namespace,
-		"metadata":      req.Metadata,
+		"namespace":      req.Namespace,
+		"metadata":       req.Metadata,
 	}).Info("[gRPC] RegisterClient request received")
 
 	// Validate request
@@ -111,19 +111,19 @@ func (s *TranslationService) RegisterClient(ctx context.Context, req *nanabushv1
 	expiresAt := now.Add(24 * time.Hour)
 
 	response := &nanabushv1.RegisterClientResponse{
-		ClientId:               clientID,
-		Success:                true,
-		Message:                fmt.Sprintf("Client %q registered successfully", req.ClientName),
+		ClientId:                 clientID,
+		Success:                  true,
+		Message:                  fmt.Sprintf("Client %q registered successfully", req.ClientName),
 		HeartbeatIntervalSeconds: int32(s.heartbeatInterval),
-		ExpiresAt:              timestamppb.New(expiresAt),
+		ExpiresAt:                timestamppb.New(expiresAt),
 	}
 
 	s.Logger.WithFields(logrus.Fields{
-		"client_id":                clientID,
-		"heartbeat_interval_sec":   s.heartbeatInterval,
-		"expires_at":               expiresAt.Format(time.RFC3339),
-		"response_success":         response.Success,
-		"response_message":         response.Message,
+		"client_id":              clientID,
+		"heartbeat_interval_sec": s.heartbeatInterval,
+		"expires_at":             expiresAt.Format(time.RFC3339),
+		"response_success":       response.Success,
+		"response_message":       response.Message,
 	}).Info("[gRPC] RegisterClient response prepared, returning to client")
 
 	// Log the actual return to help debug if response is sent
@@ -165,11 +165,11 @@ func (s *TranslationService) Heartbeat(ctx context.Context, req *nanabushv1.Hear
 			"client_name": req.ClientName,
 		}).Warn("Heartbeat from unknown client")
 		return &nanabushv1.HeartbeatResponse{
-			Success:             false,
-			Message:             "Client not registered or expired",
-			ReceivedAt:          timestamppb.Now(),
+			Success:                  false,
+			Message:                  "Client not registered or expired",
+			ReceivedAt:               timestamppb.Now(),
 			HeartbeatIntervalSeconds: int32(s.heartbeatInterval),
-			ReRegisterRequired: true,
+			ReRegisterRequired:       true,
 		}, nil
 	}
 
@@ -180,11 +180,11 @@ func (s *TranslationService) Heartbeat(ctx context.Context, req *nanabushv1.Hear
 			"got":      req.ClientName,
 		}).Warn("Heartbeat client name mismatch")
 		return &nanabushv1.HeartbeatResponse{
-			Success:             false,
-			Message:             "Client name mismatch",
-			ReceivedAt:          timestamppb.Now(),
+			Success:                  false,
+			Message:                  "Client name mismatch",
+			ReceivedAt:               timestamppb.Now(),
 			HeartbeatIntervalSeconds: int32(s.heartbeatInterval),
-			ReRegisterRequired: true,
+			ReRegisterRequired:       true,
 		}, nil
 	}
 
@@ -199,26 +199,26 @@ func (s *TranslationService) Heartbeat(ctx context.Context, req *nanabushv1.Hear
 		}).Warn("Client registration expired")
 		delete(s.clients, req.ClientId)
 		return &nanabushv1.HeartbeatResponse{
-			Success:             false,
-			Message:             "Registration expired",
-			ReceivedAt:          timestamppb.Now(),
+			Success:                  false,
+			Message:                  "Registration expired",
+			ReceivedAt:               timestamppb.Now(),
 			HeartbeatIntervalSeconds: int32(s.heartbeatInterval),
-			ReRegisterRequired: true,
+			ReRegisterRequired:       true,
 		}, nil
 	}
 
 	s.Logger.WithFields(logrus.Fields{
-		"client_id":     req.ClientId,
-		"client_name":   req.ClientName,
-		"last_seen":     clientInfo.LastHeartbeat,
+		"client_id":   req.ClientId,
+		"client_name": req.ClientName,
+		"last_seen":   clientInfo.LastHeartbeat,
 	}).Debug("Heartbeat acknowledged")
 
 	return &nanabushv1.HeartbeatResponse{
-		Success:             true,
-		Message:             "Heartbeat acknowledged",
-		ReceivedAt:          timestamppb.Now(),
+		Success:                  true,
+		Message:                  "Heartbeat acknowledged",
+		ReceivedAt:               timestamppb.Now(),
 		HeartbeatIntervalSeconds: int32(s.heartbeatInterval),
-		ReRegisterRequired: false,
+		ReRegisterRequired:       false,
 	}, nil
 }
 
@@ -226,9 +226,9 @@ func (s *TranslationService) Heartbeat(ctx context.Context, req *nanabushv1.Hear
 // This validates that Iskoces is ready and can handle the request.
 func (s *TranslationService) CheckTitle(ctx context.Context, req *nanabushv1.TitleCheckRequest) (*nanabushv1.TitleCheckResponse, error) {
 	s.Logger.WithFields(logrus.Fields{
-		"title":          req.Title,
-		"source_lang":    req.SourceLanguage,
-		"target_lang":   req.LanguageTag,
+		"title":       req.Title,
+		"source_lang": req.SourceLanguage,
+		"target_lang": req.LanguageTag,
 	}).Debug("CheckTitle request received")
 
 	// Validate request
@@ -268,8 +268,8 @@ func (s *TranslationService) CheckTitle(ctx context.Context, req *nanabushv1.Tit
 	}
 
 	s.Logger.WithFields(logrus.Fields{
-		"ready":           true,
-		"estimated_sec":   estimatedSeconds,
+		"ready":         true,
+		"estimated_sec": estimatedSeconds,
 	}).Debug("CheckTitle response")
 
 	return &nanabushv1.TitleCheckResponse{
@@ -283,9 +283,9 @@ func (s *TranslationService) CheckTitle(ctx context.Context, req *nanabushv1.Tit
 // This is the main translation endpoint that processes complete documents.
 func (s *TranslationService) Translate(ctx context.Context, req *nanabushv1.TranslateRequest) (*nanabushv1.TranslateResponse, error) {
 	s.Logger.WithFields(logrus.Fields{
-		"job_id":     req.JobId,
-		"primitive":  req.Primitive,
-		"namespace":  req.Namespace,
+		"job_id":      req.JobId,
+		"primitive":   req.Primitive,
+		"namespace":   req.Namespace,
 		"source_lang": req.SourceLanguage,
 		"target_lang": req.TargetLanguage,
 	}).Info("Translate request received")
@@ -311,8 +311,8 @@ func (s *TranslationService) Translate(ctx context.Context, req *nanabushv1.Tran
 	targetLang := s.LanguageMapper.ToBackendCode(req.TargetLanguage)
 
 	s.Logger.WithFields(logrus.Fields{
-		"proto_source": req.SourceLanguage,
-		"proto_target": req.TargetLanguage,
+		"proto_source":   req.SourceLanguage,
+		"proto_target":   req.TargetLanguage,
 		"backend_source": sourceLang,
 		"backend_target": targetLang,
 	}).Debug("Language code conversion")
@@ -362,9 +362,9 @@ func (s *TranslationService) Translate(ctx context.Context, req *nanabushv1.Tran
 
 		doc := req.GetDoc()
 		s.Logger.WithFields(logrus.Fields{
-			"job_id":        req.JobId,
-			"title":         doc.Title,
-			"markdown_len":  len(doc.Markdown),
+			"job_id":       req.JobId,
+			"title":        doc.Title,
+			"markdown_len": len(doc.Markdown),
 		}).Debug("Translating document")
 
 		if s.Translator != nil {
@@ -426,10 +426,10 @@ func (s *TranslationService) Translate(ctx context.Context, req *nanabushv1.Tran
 	}).Info("Translation completed successfully")
 
 	resp := &nanabushv1.TranslateResponse{
-		JobId:               req.JobId,
-		Success:             true,
-		CompletedAt:         timestamppb.Now(),
-		TokensUsed:          0, // Lightweight MT doesn't use tokens
+		JobId:                req.JobId,
+		Success:              true,
+		CompletedAt:          timestamppb.Now(),
+		TokensUsed:           0, // Lightweight MT doesn't use tokens
 		InferenceTimeSeconds: inferenceTime,
 	}
 
@@ -562,4 +562,3 @@ func (s *TranslationService) CleanupExpiredClients(maxIdleTime time.Duration) {
 		}).Info("Cleaned up expired clients")
 	}
 }
-

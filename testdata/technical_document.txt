@@ -28,3 +28,4 @@ def translate_text(text, source_lang, target_lang):
 3. Cache translations when possible
 4. Monitor translation quality
 
+

@@ -152,12 +152,26 @@ After deploying Iskoces, configure Glooscap to use it:
 
 ## gRPC Access
 
-OpenShift Routes are primarily for HTTP/HTTPS traffic. For gRPC:
+The route exposes the gRPC service for external access:
 
-- **Internal access**: Use the service directly: `iskoces-service.iskoces.svc:50051`
-- **External access**: Use ServiceMesh (Istio) or create a gRPC-aware ingress
+- **External gRPC access via Route**: 
+  - Connect to: `https://iskoces.apps.<your-cluster-domain>` (port 443, default HTTPS)
+  - Or: `http://iskoces.apps.<your-cluster-domain>` (port 80, HTTP)
+  - The route terminates TLS at the edge and forwards gRPC traffic (over HTTP/2) to the backend service on port 50051
+  - **Important**: Use the route hostname with port 443 (HTTPS) or 80 (HTTP). Do not specify port 50051 in the URL - the route handles forwarding to the backend port.
+- **Internal access (within cluster)**: Use the service directly: `iskoces-service.iskoces.svc:50051`
+- **HTTP health checks**: A separate route (`iskoces-http`) exposes port 5000 for health checks
 
-The Route in this directory exposes the HTTP port (5000) for health checks and debugging only.
+**Example gRPC client connection**:
+```bash
+# Connect to route (external access)
+grpcurl -plaintext iskoces.apps.ocp-ai-sno-2.rh.dasmlab.org:80 list
+
+# Or with TLS (recommended)
+grpcurl iskoces.apps.ocp-ai-sno-2.rh.dasmlab.org:443 list
+```
+
+**Note**: The route is configured with `insecureEdgeTerminationPolicy: Allow` to support gRPC over HTTP/2 without redirects that would break gRPC connections.
 
 ## Troubleshooting
 
