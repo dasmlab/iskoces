@@ -59,7 +59,7 @@ func NewTranslationService(translator translate.Translator, logger *logrus.Logge
 		LanguageMapper:    translate.NewLanguageMapper(),
 		Logger:            logger,
 		clients:           make(map[string]*ClientInfo),
-		heartbeatInterval: 30, // Default: 30 seconds
+		heartbeatInterval: 10, // Default: 10 seconds
 	}
 }
 
@@ -82,6 +82,22 @@ func (s *TranslationService) RegisterClient(ctx context.Context, req *nanabushv1
 	s.clientsMutex.Lock()
 	defer s.clientsMutex.Unlock()
 
+	// Check for existing clients with the same name and remove them
+	// This handles the case where a client reconnects (e.g., after pod restart)
+	removedOldClients := 0
+	for existingID, existingClient := range s.clients {
+		if existingClient.ClientName == req.ClientName {
+			s.Logger.WithFields(logrus.Fields{
+				"old_client_id":   existingID,
+				"client_name":     req.ClientName,
+				"last_heartbeat":  existingClient.LastHeartbeat,
+				"registered_at":   existingClient.RegisteredAt,
+			}).Info("Removing old client with same name (new registration)")
+			delete(s.clients, existingID)
+			removedOldClients++
+		}
+	}
+
 	// Generate unique client ID
 	s.clientIDCounter++
 	clientID := fmt.Sprintf("iskoces-client-%d-%d", time.Now().Unix(), s.clientIDCounter)
@@ -100,6 +116,14 @@ func (s *TranslationService) RegisterClient(ctx context.Context, req *nanabushv1
 
 	// Store client
 	s.clients[clientID] = clientInfo
+	
+	if removedOldClients > 0 {
+		s.Logger.WithFields(logrus.Fields{
+			"removed_old_clients": removedOldClients,
+			"new_client_id":        clientID,
+			"total_clients":        len(s.clients),
+		}).Info("Replaced old client(s) with new registration")
+	}
 
 	s.Logger.WithFields(logrus.Fields{
 		"client_id":     clientID,
@@ -207,10 +231,15 @@ func (s *TranslationService) Heartbeat(ctx context.Context, req *nanabushv1.Hear
 		}, nil
 	}
 
+	// Log heartbeat receipt (at debug level to avoid spam, but include timing info)
+	timeSinceLastHeartbeat := time.Since(clientInfo.LastHeartbeat)
 	s.Logger.WithFields(logrus.Fields{
-		"client_id":   req.ClientId,
-		"client_name": req.ClientName,
-		"last_seen":   clientInfo.LastHeartbeat,
+		"client_id":            req.ClientId,
+		"client_name":          req.ClientName,
+		"last_seen":            clientInfo.LastHeartbeat,
+		"time_since_last":      timeSinceLastHeartbeat,
+		"heartbeat_interval":   s.heartbeatInterval,
+		"time_since_registration": time.Since(clientInfo.RegisteredAt),
 	}).Debug("Heartbeat acknowledged")
 
 	return &nanabushv1.HeartbeatResponse{
@@ -544,14 +573,29 @@ func (s *TranslationService) CleanupExpiredClients(maxIdleTime time.Duration) {
 	removed := 0
 
 	for clientID, client := range s.clients {
-		if now.Sub(client.LastHeartbeat) > maxIdleTime {
+		timeSinceLastHeartbeat := now.Sub(client.LastHeartbeat)
+		if timeSinceLastHeartbeat > maxIdleTime {
 			s.Logger.WithFields(logrus.Fields{
-				"client_id":      clientID,
-				"client_name":    client.ClientName,
-				"last_heartbeat": client.LastHeartbeat,
-			}).Info("Removing expired client")
+				"client_id":              clientID,
+				"client_name":            client.ClientName,
+				"last_heartbeat":         client.LastHeartbeat,
+				"time_since_last":        timeSinceLastHeartbeat,
+				"max_idle_time":          maxIdleTime,
+				"registered_at":         client.RegisteredAt,
+				"time_since_registration": now.Sub(client.RegisteredAt),
+			}).Info("Removing expired client (no heartbeat received)")
 			delete(s.clients, clientID)
 			removed++
+		} else {
+			// Log clients that are still active but getting close to expiration
+			if timeSinceLastHeartbeat > maxIdleTime/2 {
+				s.Logger.WithFields(logrus.Fields{
+					"client_id":       clientID,
+					"client_name":     client.ClientName,
+					"time_since_last": timeSinceLastHeartbeat,
+					"max_idle_time":   maxIdleTime,
+				}).Debug("Client approaching expiration (no recent heartbeat)")
+			}
 		}
 	}
 
@@ -560,5 +604,10 @@ func (s *TranslationService) CleanupExpiredClients(maxIdleTime time.Duration) {
 			"removed":   removed,
 			"remaining": len(s.clients),
 		}).Info("Cleaned up expired clients")
+	} else if len(s.clients) > 0 {
+		// Log active clients for monitoring
+		s.Logger.WithFields(logrus.Fields{
+			"total_clients": len(s.clients),
+		}).Debug("Client cleanup check completed (no clients expired)")
 	}
 }
