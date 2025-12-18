@@ -124,6 +124,10 @@ RUN apt-get purge -y --auto-remove \
 # Copy Go binary from builder
 COPY --from=builder /tmp/iskoces-server /usr/local/bin/iskoces-server
 
+# Copy Python worker script
+COPY scripts/translate_worker.py /app/scripts/translate_worker.py
+RUN chmod +x /app/scripts/translate_worker.py
+
 # Copy entrypoint script
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh

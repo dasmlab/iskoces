@@ -22,7 +22,14 @@ type Config struct {
 	Engine EngineType
 	// BaseURL is the base URL for the translation engine API.
 	// Defaults to http://127.0.0.1:5000 if not specified.
+	// NOTE: If UseWorkerPool is true, BaseURL is ignored (workers use Unix sockets).
 	BaseURL string
+	// UseWorkerPool enables the fast worker pool with Unix sockets (recommended).
+	// If false, falls back to HTTP client.
+	UseWorkerPool bool
+	// MaxWorkers is the number of Python worker subprocesses to maintain (default: 4).
+	// Only used if UseWorkerPool is true.
+	MaxWorkers int
 	// Logger is the logger instance to use. If nil, a default logger is created.
 	Logger *logrus.Logger
 }
@@ -35,15 +42,40 @@ func NewTranslator(cfg Config) (Translator, error) {
 		cfg.Logger = logrus.New()
 	}
 
+	// Use worker pool by default (fast, no HTTP)
+	useWorkerPool := cfg.UseWorkerPool
+	if !cfg.UseWorkerPool && cfg.BaseURL == "" {
+		// Default to worker pool if no BaseURL specified
+		useWorkerPool = true
+	}
+
+	if useWorkerPool {
+		// Use fast worker pool with Unix sockets
+		maxWorkers := cfg.MaxWorkers
+		if maxWorkers == 0 {
+			maxWorkers = 4 // Default: 4 workers
+		}
+
+		cfg.Logger.WithFields(logrus.Fields{
+			"engine":     cfg.Engine,
+			"max_workers": maxWorkers,
+			"method":     "worker_pool_unix_socket",
+		}).Info("Creating translator with worker pool")
+
+		return NewWorkerPool(cfg.Engine, maxWorkers, cfg.Logger)
+	}
+
+	// Fall back to HTTP client (legacy mode)
 	// Set default base URL if not provided
 	if cfg.BaseURL == "" {
 		cfg.BaseURL = "http://localhost:5000"
 	}
 
 	cfg.Logger.WithFields(logrus.Fields{
-		"engine":  cfg.Engine,
+		"engine":   cfg.Engine,
 		"base_url": cfg.BaseURL,
-	}).Info("Creating translator instance")
+		"method":   "http_client",
+	}).Info("Creating translator with HTTP client")
 
 	switch cfg.Engine {
 	case EngineLibreTranslate:

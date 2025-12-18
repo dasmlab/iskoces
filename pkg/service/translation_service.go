@@ -46,6 +46,9 @@ type TranslationService struct {
 	clientsMutex      sync.RWMutex
 	clientIDCounter   int64
 	heartbeatInterval int32 // seconds
+
+	// Async job queue for translation requests
+	JobQueue *JobQueue
 }
 
 // NewTranslationService creates a new TranslationService instance.
@@ -54,12 +57,20 @@ func NewTranslationService(translator translate.Translator, logger *logrus.Logge
 		logger = logrus.New()
 	}
 
+	// Create job queue
+	jobQueue := NewJobQueue(logger)
+	
+	// Create job processor
+	processor := NewJobProcessor(translator, translate.NewLanguageMapper(), logger)
+	jobQueue.SetProcessor(processor)
+
 	return &TranslationService{
 		Translator:        translator,
 		LanguageMapper:    translate.NewLanguageMapper(),
 		Logger:            logger,
 		clients:           make(map[string]*ClientInfo),
 		heartbeatInterval: 10, // Default: 10 seconds
+		JobQueue:          jobQueue,
 	}
 }
 
@@ -326,7 +337,8 @@ func (s *TranslationService) CheckTitle(ctx context.Context, req *nanabushv1.Tit
 }
 
 // Translate performs full document translation.
-// This is the main translation endpoint that processes complete documents.
+// For large documents (>10KB), this now uses async processing and returns immediately with a job ID.
+// Clients should poll the job status or use SSE to get progress updates.
 func (s *TranslationService) Translate(ctx context.Context, req *nanabushv1.TranslateRequest) (*nanabushv1.TranslateResponse, error) {
 	s.Logger.WithFields(logrus.Fields{
 		"job_id":      req.JobId,
@@ -335,8 +347,6 @@ func (s *TranslationService) Translate(ctx context.Context, req *nanabushv1.Tran
 		"source_lang": req.SourceLanguage,
 		"target_lang": req.TargetLanguage,
 	}).Info("Translate request received")
-
-	startTime := time.Now()
 
 	// Validate request
 	if req.JobId == "" {
@@ -351,6 +361,49 @@ func (s *TranslationService) Translate(ctx context.Context, req *nanabushv1.Tran
 		s.Logger.Error("Translate: source_language is required")
 		return nil, status.Error(codes.InvalidArgument, "source_language is required")
 	}
+
+	// Determine if we should use async processing
+	// For large documents (>10KB), use async; for small ones, process synchronously for backward compatibility
+	useAsync := false
+	if req.Primitive == nanabushv1.PrimitiveType_PRIMITIVE_DOC_TRANSLATE {
+		if doc := req.GetDoc(); doc != nil {
+			// Use async if markdown is large (>10KB)
+			if len(doc.Markdown) > 10*1024 {
+				useAsync = true
+			}
+		}
+	}
+
+	if useAsync {
+		// Create async job and return immediately
+		jobID, err := s.JobQueue.CreateJob(req)
+		if err != nil {
+			s.Logger.WithError(err).Error("Failed to create async translation job")
+			return &nanabushv1.TranslateResponse{
+				JobId:        req.JobId,
+				Success:      false,
+				ErrorMessage: fmt.Sprintf("Failed to queue translation job: %v", err),
+				CompletedAt:  timestamppb.Now(),
+			}, nil
+		}
+
+		s.Logger.WithFields(logrus.Fields{
+			"job_id":     jobID,
+			"request_id": req.JobId,
+		}).Info("Translation job queued for async processing")
+
+		// Return response indicating job is queued
+		// Client should poll job status or use SSE endpoint
+		return &nanabushv1.TranslateResponse{
+			JobId:        req.JobId,
+			Success:      false, // Not completed yet
+			ErrorMessage: fmt.Sprintf("Translation queued. Use job ID '%s' to check status via /api/v1/jobs/%s or SSE endpoint", jobID, jobID),
+			CompletedAt:  timestamppb.Now(),
+		}, nil
+	}
+
+	// Small request - process synchronously for backward compatibility
+	startTime := time.Now()
 
 	// Convert language codes to backend format
 	sourceLang := s.LanguageMapper.ToBackendCode(req.SourceLanguage)
@@ -400,7 +453,7 @@ func (s *TranslationService) Translate(ctx context.Context, req *nanabushv1.Tran
 		}
 
 	case nanabushv1.PrimitiveType_PRIMITIVE_DOC_TRANSLATE:
-		// Full document translation
+		// Full document translation (small document, synchronous)
 		if req.GetDoc() == nil {
 			s.Logger.Error("Translate: doc is required for PRIMITIVE_DOC_TRANSLATE")
 			return nil, status.Error(codes.InvalidArgument, "doc is required for PRIMITIVE_DOC_TRANSLATE")
@@ -411,7 +464,7 @@ func (s *TranslationService) Translate(ctx context.Context, req *nanabushv1.Tran
 			"job_id":       req.JobId,
 			"title":        doc.Title,
 			"markdown_len": len(doc.Markdown),
-		}).Debug("Translating document")
+		}).Debug("Translating document synchronously")
 
 		if s.Translator != nil {
 			// Translate title

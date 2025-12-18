@@ -18,6 +18,7 @@ import (
 	"google.golang.org/grpc/reflection"
 
 	"github.com/dasmlab/iskoces/pkg/proto/v1"
+	"github.com/dasmlab/iskoces/pkg/server"
 	"github.com/dasmlab/iskoces/pkg/service"
 	"github.com/dasmlab/iskoces/pkg/translate"
 	"github.com/sirupsen/logrus"
@@ -73,11 +74,12 @@ func main() {
 		logger.WithError(err).Fatal("Failed to parse translation engine type")
 	}
 
-	// Create translator instance
+	// Create translator instance with worker pool (fast, no HTTP)
 	translator, err := translate.NewTranslator(translate.Config{
-		Engine:  engineType,
-		BaseURL:  *mtURL,
-		Logger:   logger,
+		Engine:       engineType,
+		UseWorkerPool: true, // Use fast worker pool with Unix sockets
+		MaxWorkers:   4,     // 4 concurrent Python workers
+		Logger:       logger,
 	})
 	if err != nil {
 		logger.WithError(err).Fatal("Failed to create translator")
@@ -152,6 +154,18 @@ func main() {
 	translationService := service.NewTranslationService(translator, logger)
 	nanabushv1.RegisterTranslationServiceServer(s, translationService)
 
+	// Start HTTP server for job status and SSE (in background)
+	httpPort := 5000 // HTTP port for job status API
+	go func() {
+		httpServer := server.NewHTTPServer(translationService.JobQueue, logger, httpPort)
+		if err := httpServer.Start(); err != nil {
+			logger.WithError(err).Error("HTTP server failed")
+		}
+	}()
+	logger.WithFields(logrus.Fields{
+		"port": httpPort,
+	}).Info("HTTP server started for job status and SSE")
+
 	// Enable reflection for grpcurl/debugging (can be disabled in production)
 	reflection.Register(s)
 
@@ -173,6 +187,8 @@ func main() {
 			select {
 			case <-ticker.C:
 				translationService.CleanupExpiredClients(maxIdleTime)
+				// Also cleanup old translation jobs (keep for 1 hour)
+				translationService.JobQueue.CleanupOldJobs(1 * time.Hour)
 			case <-cleanupCtx.Done():
 				return
 			}
