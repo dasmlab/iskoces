@@ -1,0 +1,151 @@
+#!/usr/bin/env bash
+# deploy-iskoces-released.sh
+# Deploys Iskoces to the Kubernetes cluster using released/pre-built images
+# Expects ISKOCES_VERSION env var (defaults to 'released')
+
+set -euo pipefail
+
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m'
+
+# Script directory
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+MANIFESTS_DIR="$(cd "${SCRIPT_DIR}/../manifests" && pwd)"
+
+# Image version/tag to use (defaults to 'released', can be overridden with ISKOCES_VERSION env var)
+# The 'released' tag represents the latest release images pushed by release_images.sh
+ISKOCES_VERSION="${ISKOCES_VERSION:-released}"
+
+# Functions
+log_info() {
+    echo -e "${BLUE}[INFO]${NC} $1"
+}
+
+log_success() {
+    echo -e "${GREEN}[SUCCESS]${NC} $1"
+}
+
+log_warn() {
+    echo -e "${YELLOW}[WARN]${NC} $1"
+}
+
+log_error() {
+    echo -e "${RED}[ERROR]${NC} $1"
+}
+
+# Check if kubectl is available
+if ! command -v kubectl &> /dev/null; then
+    log_error "kubectl not found. Please run setup first"
+    exit 1
+fi
+
+# Check if cluster is accessible
+if ! kubectl cluster-info &> /dev/null; then
+    log_error "Cannot connect to Kubernetes cluster"
+    log_info "Please ensure Kubernetes cluster is running"
+    exit 1
+fi
+
+log_info "Deploying Iskoces to Kubernetes cluster using released images..."
+log_info "Using image version: ${ISKOCES_VERSION}"
+
+# Use released image (no architecture-specific tags for released images)
+ISKOCES_IMG="ghcr.io/dasmlab/iskoces-server:${ISKOCES_VERSION}"
+
+log_info "Using Iskoces image: ${ISKOCES_IMG}"
+
+# Create namespace
+log_info "Creating namespace..."
+kubectl apply -f "${MANIFESTS_DIR}/namespace.yaml"
+
+# Create registry secret if DASMLAB_GHCR_PAT is set
+if [ -n "${DASMLAB_GHCR_PAT:-}" ]; then
+    log_info "Creating registry secret..."
+    if bash "${SCRIPT_DIR}/create-registry-secret.sh"; then
+        log_success "Registry secret created"
+    else
+        log_warn "Failed to create registry secret (images may not pull from registry)"
+        log_info "Continuing anyway..."
+    fi
+else
+    log_warn "DASMLAB_GHCR_PAT not set - skipping registry secret creation"
+    log_info "If you need to pull images from ghcr.io, set: export DASMLAB_GHCR_PAT=your_token"
+fi
+
+# Apply ConfigMap
+log_info "Applying configuration..."
+kubectl apply -f "${MANIFESTS_DIR}/configmap.yaml"
+
+# Apply PVC
+log_info "Creating persistent volume for models..."
+kubectl apply -f "${MANIFESTS_DIR}/pvc.yaml"
+
+# Wait for PVC to be bound (may take a moment)
+log_info "Waiting for PVC to be bound..."
+kubectl wait --for=condition=Bound --timeout=60s pvc/iskoces-models -n iskoces || {
+    log_warn "PVC may not be bound yet (this is OK for local development)"
+}
+
+# Apply Deployment with released image
+log_info "Deploying Iskoces server with released image..."
+# Create a temporary deployment file with the released image
+TEMP_DEPLOYMENT=$(mktemp)
+cp "${MANIFESTS_DIR}/deployment.yaml" "${TEMP_DEPLOYMENT}"
+
+# Patch deployment to use released image
+sed -i.bak "s|ghcr.io/dasmlab/iskoces-server:.*|${ISKOCES_IMG}|g" "${TEMP_DEPLOYMENT}"
+sed -i.bak "s|imagePullPolicy:.*|imagePullPolicy: Always|g" "${TEMP_DEPLOYMENT}"
+
+# Add imagePullPolicy if it doesn't exist
+if ! grep -A 1 "image:.*iskoces-server" "${TEMP_DEPLOYMENT}" | grep -q "imagePullPolicy:"; then
+    awk '/image:.*iskoces-server/ {print; print "        imagePullPolicy: Always"; next}1' "${TEMP_DEPLOYMENT}" > "${TEMP_DEPLOYMENT}.tmp" && \
+    mv "${TEMP_DEPLOYMENT}.tmp" "${TEMP_DEPLOYMENT}"
+fi
+
+kubectl apply -f "${TEMP_DEPLOYMENT}"
+rm -f "${TEMP_DEPLOYMENT}" "${TEMP_DEPLOYMENT}.bak"
+log_success "Iskoces deployment applied with released image (${ISKOCES_VERSION})"
+
+# Apply Service
+log_info "Creating service..."
+kubectl apply -f "${MANIFESTS_DIR}/service.yaml"
+
+# Wait for deployment to be ready
+log_info "Waiting for Iskoces to be ready (this may take a few minutes for models to load)..."
+kubectl wait --for=condition=available --timeout=600s deployment/iskoces-server -n iskoces || {
+    log_warn "Iskoces deployment may not be ready yet"
+    log_info "Check status with: kubectl get pods -n iskoces"
+    log_info "Check logs with: kubectl logs -n iskoces deployment/iskoces-server"
+}
+
+# Show status
+echo ""
+log_success "Iskoces deployed successfully with released images!"
+echo ""
+log_info "Deployment status:"
+kubectl get pods -n iskoces
+echo ""
+log_info "Service:"
+kubectl get svc -n iskoces
+echo ""
+
+# Show service address
+SERVICE_ADDR="iskoces-service.iskoces.svc:50051"
+log_info "Iskoces gRPC service address: ${SERVICE_ADDR}"
+echo ""
+log_info "To use with Glooscap, configure in UI:"
+echo "  Address: ${SERVICE_ADDR}"
+echo "  Type: iskoces"
+echo "  Secure: false"
+echo ""
+log_info "To view logs:"
+echo "  kubectl logs -f -n iskoces deployment/iskoces-server"
+echo ""
+log_info "Image used:"
+echo "  Iskoces: ${ISKOCES_IMG}"
+echo ""
+
