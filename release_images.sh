@@ -114,21 +114,27 @@ if [ "$USE_BUILDX" = true ]; then
     log_info "Using buildx for multi-arch Iskoces build..."
     
     # Check builder driver type
-    BUILDER_DRIVER=$(docker buildx inspect --bootstrap 2>/dev/null | grep "Driver:" | awk '{print $2}' || echo "unknown")
+    BUILDER_NAME=$(docker buildx ls | grep -v "^NAME" | head -1 | awk '{print $1}' || echo "")
+    if [ -n "${BUILDER_NAME}" ]; then
+        docker buildx use "${BUILDER_NAME}" >/dev/null 2>&1 || true
+        BUILDER_DRIVER=$(docker buildx inspect "${BUILDER_NAME}" --bootstrap 2>/dev/null | grep "Driver:" | awk '{print $2}' || echo "unknown")
+    else
+        BUILDER_DRIVER="unknown"
+    fi
     log_info "Buildx builder driver: ${BUILDER_DRIVER}"
     
-    # For docker-container driver, we need to use --push (should work)
-    # For docker driver, we might need --load then push separately
+    # For docker-container driver, we need to use --output type=registry explicitly
+    # For docker driver, we use --load then push separately
     if [ "${BUILDER_DRIVER}" = "docker-container" ]; then
-        log_info "Using docker-container driver - building and pushing directly..."
+        log_info "Using docker-container driver - building and pushing with explicit output..."
         if docker buildx build \
             --platform linux/arm64,linux/amd64 \
-            --push \
+            --output type=registry \
             --tag "${ISKOCES_IMG}" \
             . 2>&1; then
             log_success "Iskoces image built and pushed (multi-arch): ${ISKOCES_IMG}"
         else
-            log_error "Failed to build/push Iskoces image with buildx"
+            log_error "Failed to build/push Iskoces image with buildx docker-container driver"
             log_info "Falling back to single-arch build..."
             USE_BUILDX=false
         fi
@@ -137,16 +143,16 @@ if [ "$USE_BUILDX" = true ]; then
         # Docker driver doesn't support multi-arch well, fall back
         USE_BUILDX=false
     else
-        # Try --push first, if it fails, try --load then push
-        log_info "Trying buildx build with --push..."
+        # Try with explicit output type first
+        log_info "Trying buildx build with explicit registry output..."
         if docker buildx build \
             --platform linux/arm64,linux/amd64 \
-            --push \
+            --output type=registry \
             --tag "${ISKOCES_IMG}" \
             . 2>&1; then
             log_success "Iskoces image built and pushed (multi-arch): ${ISKOCES_IMG}"
         else
-            log_warn "Buildx --push failed, trying --load then manual push..."
+            log_warn "Buildx registry output failed, trying --load then manual push..."
             # Build and load for current platform, then push
             # Note: This won't be multi-arch, but will work
             ARCH=$(uname -m)
