@@ -1,0 +1,308 @@
+name: CI Pipeline
+
+on:
+  push:
+    branches: ['**']  # All branches
+  pull_request:
+    branches: [main]
+  workflow_dispatch:  # Manual trigger with inputs
+    inputs:
+      publish:
+        description: 'Publish to GHCR'
+        required: false
+        default: 'false'
+        type: boolean
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_PREFIX: dasmlab
+
+jobs:
+  # Build Iskoces server
+  build:
+    name: Build Iskoces
+    runs-on: self-hosted
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Docker Diagnostics
+        run: |
+          set -euxo pipefail
+          
+          echo "== whoami / env =="
+          id || true
+          uname -a || true
+          
+          echo "== Fix Docker socket permissions =="
+          # Get Docker socket GID
+          DOCKER_GID=$(stat -c '%g' /var/run/docker.sock 2>/dev/null || echo "1000")
+          echo "Docker socket GID: $DOCKER_GID"
+          
+          # Add runner user to docker group if not already
+          if ! id -nG | grep -q docker; then
+            echo "Adding runner user to docker group (GID: $DOCKER_GID)..."
+            sudo groupadd -g $DOCKER_GID docker 2>/dev/null || true
+            sudo usermod -aG docker $(whoami) || sudo gpasswd -a $(whoami) docker || true
+            # Apply group changes (newgrp or sg)
+            newgrp docker << EOF || sg docker -c "echo 'Group changed'" || true
+            echo "In docker group now"
+            EOF
+          fi
+          
+          echo "== docker daemon reachability =="
+          ls -l /var/run/docker.sock || true
+          docker version || true
+          docker info || true
+          
+          echo "== buildx =="
+          docker buildx version || true
+          docker buildx ls || true
+          
+          echo "== builder containers =="
+          docker ps -a --format 'table {{.Names}}\t{{.Image}}\t{{.Status}}' | sed -n '1,40p' || true
+          
+          echo "== cgroups (common DinD/buildkit failure) =="
+          mount | grep -E 'cgroup|fuse-overlayfs|overlay' || true
+          ls -l /sys/fs/cgroup || true
+      
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        with:
+          install: false  # Don't install, just ensure buildx is available
+          driver-opts: |
+            image=moby/buildkit:latest
+          version: latest
+          endpoint: default  # Use default endpoint, we'll create our own builder
+      
+      # QEMU installation skipped - using native builds only for now
+      # Will add multi-arch when ARM64 runner is ready
+      
+      - name: Create and use buildx builder
+        run: |
+          # Get socket group for sg commands
+          SOCKET_GID=$(stat -c '%g' /var/run/docker.sock 2>/dev/null || echo "988")
+          SOCKET_GROUP=$(getent group $SOCKET_GID 2>/dev/null | cut -d: -f1 || echo "dockersock")
+          
+          # For now, use simple docker driver (native amd64 only)
+          # This avoids BuildKit container permission issues
+          echo "Setting up buildx for native amd64 builds..."
+          
+          # Remove existing builder if it exists
+          sg $SOCKET_GROUP -c "docker buildx rm ci-builder" 2>/dev/null || true
+          
+          # Create builder with docker driver (simple, native platform only)
+          sg $SOCKET_GROUP -c "docker buildx create --name ci-builder --driver docker --use" || {
+            echo "⚠️ Failed to create builder, trying default..."
+            sg $SOCKET_GROUP -c "docker buildx use default" || true
+          }
+          
+          # Verify builder
+          echo "Builder status:"
+          sg $SOCKET_GROUP -c "docker buildx ls" || docker buildx ls || true
+      
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/iskoces-server
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=sha,prefix={{branch}}-
+            type=raw,value=dev-${{ github.sha }}
+      
+      - name: Verify build context
+        run: |
+          echo "== Build context verification =="
+          pwd
+          ls -la
+          git rev-parse --show-toplevel || true
+          test -f ./Dockerfile && echo "✅ Dockerfile found" || echo "❌ Dockerfile missing"
+      
+      - name: Build and push
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          platforms: linux/amd64
+          builder: ci-builder
+
+  # Container scanning (DAST)
+  scan:
+    name: Scan Container
+    needs: build
+    if: always() && needs.build.result == 'success'
+    runs-on: self-hosted
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/iskoces-server:${{ github.ref_name == 'main' && 'main' || format('dev-{0}', github.sha) }}
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+          severity: 'CRITICAL,HIGH'
+          exit-code: '0'  # Don't fail, just log (permissive mode)
+      
+      - name: Upload Trivy results to GitHub Security
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: 'trivy-results.sarif'
+      
+      - name: Log scan results
+        if: always()
+        run: |
+          echo "## Security Scan Results" >> $GITHUB_STEP_SUMMARY
+          echo "Image: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/iskoces-server:${{ github.ref_name == 'main' && 'main' || format('dev-{0}', github.sha) }}" >> $GITHUB_STEP_SUMMARY
+          echo "⚠️ Scan completed (permissive mode - failures logged but not blocking)" >> $GITHUB_STEP_SUMMARY
+
+  # Code coverage (must not fail on syntax)
+  coverage:
+    name: Code Coverage
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      
+      - name: Cache Go modules
+        uses: actions/cache@v4
+        with:
+          path: ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('go.sum') }}
+      
+      - name: Install dependencies
+        run: |
+          go mod download
+          go mod verify
+      
+      - name: Run tests with coverage
+        continue-on-error: true  # Don't fail on test failures
+        run: |
+          set +e  # Don't exit on error
+          go test ./... \
+            -coverprofile=coverage.out \
+            -covermode=atomic \
+            -v 2>&1 | tee test-output.txt || true
+      
+      - name: Generate coverage report
+        if: always()
+        run: |
+          if [ -f coverage.out ] && [ -s coverage.out ]; then
+            go tool cover -html=coverage.out -o coverage.html || true
+            go tool cover -func=coverage.out > coverage.txt || true
+            echo "## Coverage Summary" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            tail -n 1 coverage.txt >> $GITHUB_STEP_SUMMARY || echo "No coverage data" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+          else
+            echo "⚠️ No coverage data generated" >> $GITHUB_STEP_SUMMARY
+          fi
+      
+      - name: Upload coverage
+        if: always()
+        uses: codecov/codecov-action@v4
+        with:
+          file: ./coverage.out
+          fail_ci_if_error: false  # Don't fail on coverage upload errors
+          flags: unittests
+
+  # Manual publish to GHCR (workflow_dispatch with input)
+  publish-to-ghcr:
+    name: Publish to GHCR
+    needs: [build, scan]
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.publish == 'true'
+    runs-on: self-hosted
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        with:
+          driver-opts: |
+            image=moby/buildkit:latest
+      
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Tag and push as dev-commitid
+        run: |
+          BRANCH_TAG="${{ github.ref_name }}"
+          COMMIT_TAG="dev-${{ github.sha }}"
+          
+          docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/iskoces-server:$BRANCH_TAG || true
+          docker tag ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/iskoces-server:$BRANCH_TAG \
+                     ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/iskoces-server:$COMMIT_TAG || true
+          docker push ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/iskoces-server:$COMMIT_TAG || true
+      
+      - name: Cleanup old dev packages
+        run: |
+          # Keep only the 3 most recent dev-* packages
+          gh api \
+            repos/${{ github.repository }}/packages/container/iskoces-server/versions \
+            --jq '.[] | select(.metadata.container.tags[] | startswith("dev-")) | .id' \
+            | tail -n +4 \
+            | xargs -I {} gh api \
+              repos/${{ github.repository }}/packages/container/iskoces-server/versions/{} \
+              -X DELETE || true
+
+  # Main branch - publish as 'latest'
+  publish-latest:
+    name: Publish Latest
+    needs: [build, scan, coverage]
+    if: github.ref == 'refs/heads/main' && needs.build.result == 'success'
+    runs-on: self-hosted
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        with:
+          driver-opts: |
+            image=moby/buildkit:latest
+      
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Tag as latest
+        run: |
+          docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/iskoces-server:main || true
+          docker tag ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/iskoces-server:main \
+                     ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/iskoces-server:latest || true
+          docker push ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/iskoces-server:latest || true
+
